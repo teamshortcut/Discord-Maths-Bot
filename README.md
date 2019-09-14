@@ -1,4 +1,9 @@
 # Discord Maths Bot
+## NOTE
+---
+The KCL website has recently been updated, and as such until the bot is updated it will not work with the new website. Fix coming as soon as I can manage!
+---
+
 A Discord Maths Bot written in Python. designed to give problems from the Kings Maths School Seven Day Maths website. https://www.kcl.ac.uk/mathsschool/weekly-maths-challenge/weekly-maths-challenge.aspx This includes the current weekly challenge, as well as a random problem from their archive.
 
 # Usage
