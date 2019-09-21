@@ -1,4 +1,3 @@
-#https://github.com/Rapptz/discord.py/blob/async/examples/reply.py
 #Import libraries
 import discord
 import requests
@@ -7,128 +6,193 @@ from random import randint
 import re
 import math
 
-WEEKLY_URL = "https://www.kcl.ac.uk/mathsschool/weekly-maths-challenge/weekly-maths-challenge.aspx" #All problems are sourced from the Kings Maths School Seven Day Maths website
-#Problems 101 onwards have their own pages, linked from the weekly URL
-ARCHIVE_URLS = ["https://www.kcl.ac.uk/mathsschool/weekly-maths-challenge/previouschallenges.aspx", "https://www.kcl.ac.uk/mathsschool/weekly-maths-challenge/recentchallenges.aspx", "https://www.kcl.ac.uk/mathsschool/weekly-maths-challenge/challenges-41-60.aspx", "https://www.kcl.ac.uk/mathsschool/weekly-maths-challenge/challenges-61-80.aspx", "https://www.kcl.ac.uk/mathsschool/weekly-maths-challenge/challenges-81-100.aspx"]
-WEEKLY_TEXT = "This week's challenge!\n--------------------------\n" #Beginning of the message that gets posted when the weekly problem updates
-TOKEN = "XXX"
-NOTIF_CHANNEL_ID = 'XXX'
-TARGET_CHANNEL_ID = 'XXX'
+#KCL
+BASE_URL = "https://www.kingsmathsschool.com"
+WEEKLY_URL = BASE_URL + "/weekly-maths-challenge/" # All problems are sourced from the Kings Maths School Seven Day Maths website
+TITLE_CLASS = "MathsQuizCardstyled__MathsQuizCardStyled-sc-1bfsz0n-0 fKREdG"
+DESCRIPTION_CLASS = "HTMLRaw HTMLRaw-sc-40skyg-0 eMcAdk"
+PAGENUMBER_CLASS = "last PagingItemstyled__PagingItemStyled-sc-84ej5y-0 KLJqO"
+TITLE_ROLE = "page title"
 
-#Function to generate an array of all the (absolute) links to each problem.
-#Used only for problems 101 onwards, as the rest are stored differently. Urls are in ARCHIVE_URLS
-#Due to how requests_html seems to work, the links seem to be placed in the list in a random order each time
-def getLinks():
-        import requests_html
-        session = requests_html.HTMLSession()
-        r = session.get(WEEKLY_URL) #Gets the HTML of the specified URL
-        links = r.html.absolute_links #Gets every absolute link found on the page...
-        links = list(links) #...and then converts from a Set to a List.
+#Discord
+TOKEN = 'XXX'
+NOTIF_CHANNEL_ID = 123
+TARGET_CHANNEL_ID = 123
 
-        #Filters the list to only the links to a problem page.
-        i = 0
-        while i < len(links):
-            if "https://www.kcl.ac.uk/mathsschool/weekly-maths-challenge/problems/wmc" not in links[i]:
-                links.remove(links[i])
-            else:
-                i += 1
+#Bot
+FILENAME = "challenge.txt" # tracks challenges that have inconsistent URLs (do not end in "challenge-[num]") or are broken 
 
-        return links #Returns the list
+#Messages
+WEEKLY_TEXT = "This week's challenge!\n--------------------------\n" # Beginning of the message that gets posted when the weekly problem updates
+HELP = """```A maths bot to give maths questions from King's Maths School's weekly maths challenge questions!
 
-#Used to determine when the problem description has ended. Includes every possible text signalling the description has finished, as of 02/07/2018
-def endOfProblem(element):
-    result = True
-    if ("view the solution" in str(element).lower()):
-        result = False
+%help - This command! Lists possible commands and their usage.
+%weekly - Returns that week's maths question.
+%question [number] [category] - Returns a maths question; either from a specific challenge number, or random from a specific category (listed below) or all questions if no category is specified.
 
-    if ("view the solutions" in str(element).lower()):
-        result = False
+Question Categories:
+Algebra
+Combinatorics
+Geometry
+Number Theory
+Probability
+Ratios and Proportions```"""
 
-    if ("view solution" in str(element).lower()):
-        result = False
+# Gets the most recent (weekly) challenge's url or number
+def getMostRecentChallenge(url):
+    r = requests.get(WEEKLY_URL)
+    html = r.text
+    soup = BeautifulSoup(html, 'html.parser')
 
-    if ("think you can solve it" in str(element).lower()):
-        result = False
+    #Find all questions on the page, and get the top (most recent) one
+    questions = soup.findAll("a", {"class": TITLE_CLASS})
+    link = questions[0]["href"]
+    
+    if url:
+        return link
+    else:
+        result = 0
+        i = -1
+        con = True
+        # the url will typically end in "challenge-[num]", but may sometimes have additional words separated by hyphens
+        while con: # iterate backwards through the string until a valid challenge number is found
+            try:
+                result = int(link.split("-")[i])
+                con = False
+            except Exception:
+                i -= 1
 
-    if ("think you have the answer" in str(element).lower()):
-        result = False
+        return result
 
-    if ("view the solution attempts" in str(element).lower()):
-        result = False
-
-    if ("an alternative solution was submitted" in str(element).lower()):
-        result = False
-
-    return result
-
-#Function to get the Title of the problem from a given URL. Returns a string
-#archiveNum is optional, used if the problem is before #101
-def title(url, archiveNum=0):
+# Gets the title of a problem from the challenge URL
+def getTitle(url):
     r = requests.get(url)
     html = r.text
     soup = BeautifulSoup(html, 'html.parser')
-    if url not in ARCHIVE_URLS: #If the problem has its own webpage; ie. problems 101 onwards
-        title = soup.h3.next_sibling.next_sibling
-    else:
-        anchors = soup.find_all(class_="sys_trigger", string=re.compile("Weekly")) #Gets all title tags on the page
-        archiveNum  = abs(archiveNum-20) + 19 #Because they are found in reverse order, archiveNum must be adjusted
-        title = anchors[archiveNum % 20] #Modulo is used because challenges are split into groups of 20
-    return title.getText()
 
-#Function to get the Description of the problem from a given URL. Returns a string
-def description(url, archiveNum=-1):
+    # find the title on the page based off HTML role name
+    title = soup.findAll("h2", {"role": TITLE_ROLE})[0].contents[0]
+    return title
+
+def getDescription(url):
     r = requests.get(url)
     html = r.text
     soup = BeautifulSoup(html, 'html.parser')
-    text = ""
-    if url not in ARCHIVE_URLS: #If the problem has its own webpage; ie. problems 101 onwards
-        element = soup.h3.next_sibling.next_sibling #Description always starts after the Title, which occurs 2 'siblings' after the first h3 tag
-        #The description is a variable length, but always ends with an <hr/> tag.
-        #This loops until that tag is reached, adding the text (that isn't Null, or blank as there seems to be a lot of whitespace) to the Decription
-        while "<hr/>" not in str(element):
-            element = element.next_sibling
-            if (str(element).rstrip()) != "" and element != None:
-                text += element.getText()
-            else:
-                text += "\n"
+
+    # find the description on the page from the HTML class name
+    div = soup.findAll("div", {"class": DESCRIPTION_CLASS})[0]
+    return div.getText() # returns the text in that element, which will be the entire challenge description
+
+# Get all the challenge numbers for a specified mathematical category
+def getCategoryChallengeNums(category):
+    # sets up base URL
+    category = category.lower()
+    url = WEEKLY_URL + "1"
+    urlEnd = "?category="
+
+    # convert bot category names to URL endings
+    if category == "algebra":
+        urlEnd = urlEnd + "algebra"
+    elif category == "combinatorics":
+        urlEnd = urlEnd + "combinatorics"
+    elif category == "geometry":
+        urlEnd = urlEnd + "geometry"
+    elif category == "number" or "number theory":
+        urlEnd = urlEnd + "number"
+    elif category == "probability":
+        urlEnd = urlEnd + "probability"
+    elif category == "ratios" or category == "proportions" or category == "ratios and proportions":
+        urlEnd = urlEnd + "ratios-and-proportions"
     else:
-        anchors = soup.find_all(class_="sys_trigger", string=re.compile("Weekly")) #Gets all title tags
-        archiveNum  = abs(archiveNum-20) + 19 #Because they are found in reverse order, archiveNum must be adjusted
-        elements = anchors[archiveNum % 20].next_sibling.contents #Description is nested below the next tag ('sibling') from the title. Modulo is used because challenges are split into groups of 20.
-        j = 0
-         #This loops until the problem description has ended, adding the text (that isn't Null, or blank as there seems to be a lot of whitespace) to the Decription
-        while endOfProblem(elements[j]) and j != len(elements)-1:
-            if (str(elements[j]).rstrip()) != "" and elements[j] != None:
-                text += elements[j].getText()
-            else:
-                text += "\n"
-            j += 1
-    return text
+        return ""
 
-#Function to return the message the bot should send, containing the problem's Title and Description.
-#If random = False then it returns the weekly challenge, otherwise returns a random problem from the currently supported archive.
-def question(random):
-    #Array of all the links to problems
-    links = getLinks()
-    titleVar = ""
-    descriptionVar = ""
+    r = requests.get(url+urlEnd)
+    html = r.text
+    soup = BeautifulSoup(html, 'html.parser')
 
-    if not random: #Gets the Title and Description of the weekly challenge
-        titleVar = title(WEEKLY_URL)
-        descriptionVar = description(WEEKLY_URL)
+    # challenges will likely be split across multiple pages, so find the final page based on HTML class name
+    lastPage = soup.findAll("button", {"class": PAGENUMBER_CLASS})[0]
+    lastPage = lastPage.findChildren()[0].getText()
+
+    nums = []
+    # iterate through all pages containing challenges of this category
+    for i in range(1, int(lastPage)+1):
+        # get the challenges for the current page
+        url = WEEKLY_URL + str(i)
+        r = requests.get(url+urlEnd)
+        html = r.text
+        soup = BeautifulSoup(html, 'html.parser')
+
+        # get all links to challenges on this page
+        links = soup.findAll("a", {"class": TITLE_CLASS})
+
+        # for each challenge, get the challenge number
+        for j in links:
+            k = -1
+            con = True
+            # the url will typically end in "challenge-[num]", but may sometimes have additional words separated by hyphens
+            while con: # iterate backwards through the string until a valid challenge number is found
+                try:
+                    nums.append(int(j["href"].split("-")[k]))
+                    con = False
+                except Exception:
+                    k -= 1
+
+    return nums # returns list of challenge numbers
+
+# returns the message to be sent by the bot, either for the weekly challenge, a random one (default number), a specified number or a random challenge from a mathematical category
+def question(weekly=False, number=-1, category="NONE"):
+    if weekly: # return current weekly challenge
+        url = BASE_URL + getMostRecentChallenge(True)
+        title = getTitle(url)
+        description = getDescription(url)
+
+        # title in bold
+        message = "**" + title + "**\n" + description
+        return message
     else:
-        #1 less than len(links) for all problems with their own page, +100 for all other archived problems.
-        rand = randint(0, len(links)-1+100) #Generates a random number...
-        if rand >= 100: #(ie. problem has its own webpage)
-            titleVar = title(links[rand-100]) #...and gets the Title...
-            descriptionVar = description(links[rand-100]) #and Description of the challenge from the link found at that index.
+        if number == -1:
+            if category == "NONE": # random question, generate random number up to most recent challenge number
+                number = randint(1, int(getMostRecentChallenge(False)))
+            else: # pick a random challenge number from the list generated for the specified category
+                nums = getCategoryChallengeNums(category)
+                rand = randint(0, len(nums)-1)
+                number = nums[rand]
 
+        # get dictionary of all broken/inconsistent challenges from external file
+        brokenChallenges = {}
+        with open(FILENAME) as file:
+            for line in file:
+                (key, value) = line.split(" ")
+                brokenChallenges[int(key)] = value.rstrip("\n")
+
+        # if the challenge is broken or has an inconcsistent URL
+        if number in brokenChallenges.keys():
+            if brokenChallenges[number] == "BROKEN":
+                message = "There was a problem, that question could not be fetched. Sorry!"
+                return message
+            else: # adjust URL and send message
+                url = brokenChallenges[number]
+                title = getTitle(url)
+                description = getDescription(url)
+
+                # title in bold
+                message = "**" + title + "**\n" + description
+                return message
         else:
-            #...gets the title and description for that problem. math.floor(rand / 20) is to get the correct group and URL
-            titleVar = title(ARCHIVE_URLS[math.floor(rand / 20)], rand) 
-            descriptionVar = description(ARCHIVE_URLS[math.floor(rand / 20)], rand)
-    message = "**"+titleVar+"**\n"+descriptionVar #Returns the message for the bot to send; the Title in bold and the challenge description after it
-    return message
+            try: # get the message for the challenge of the number specified earlier (by user or picked programmatically)
+                url = WEEKLY_URL + "challenge-" + str(number)
+
+                title = getTitle(url)
+                description = getDescription(url)
+
+                # title in bold
+                message = "**" + title + "**\n" + description
+                return message
+            except Exception:
+                message = "There was a problem, that question could not be fetched. Sorry!"
+                return message
+    return "There was a problem, that question could not be fetched. Sorry!" # if no other message returned, return an error
 
 client = discord.Client()
 
@@ -138,13 +202,29 @@ async def on_message(message):
     if message.author == client.user:
         return
 
-    if message.content.startswith("!weekly"): #Sends message with current weekly challenge
-        msg = question(False)
-        await client.send_message(message.channel, msg)
+    # send help message
+    if message.content.startswith('%help'):
+        msg = HELP
+        await message.channel.send(msg)
 
-    if message.content.startswith("!question"): #Sends message with a random problem from the currently supported archive.
+    # sends message with current weekly challenge
+    if message.content.startswith("%weekly"):
         msg = question(True)
-        await client.send_message(message.channel, msg)
+        await message.channel.send(msg)
+
+    # returns either a random question (from a category if specified) or one with a specific challenge number
+    if message.content.startswith("%question"):
+        args = message.content.split(" ") # get any arguments
+        if len(args) > 1: # if there were additional arguments
+            try: # if the argument was a number
+                num = int(args[1])
+                msg = question(False, number=num) # get the challenge for the specified number
+            except ValueError: # argument was not a number, therefore treat it as a category name
+                msg = question(False, category=args[1]) # get a challenge from the specified category
+        else:
+            msg = question(False) # get a random challenge
+
+        await message.channel.send(msg)
         
 
     #The bot posts a message when the weekly challenge updates; this relies on a webhook connected to their Twitter account. (which only tweets when the challenge updates)
@@ -152,17 +232,33 @@ async def on_message(message):
     #When a message is sent to the notification channel, the bot posts the weekly challenge to the target channel.
     notifChannel = client.get_channel(NOTIF_CHANNEL_ID)
     targetChannel = client.get_channel(TARGET_CHANNEL_ID)
+    
     if message.channel == notifChannel and message.content.startswith("!post"):
         msg = WEEKLY_TEXT
-        msg += question(False)
+        msg += question(True) # get current weekly challenge
 
-        currentPins = await client.pins_from(targetChannel) #Gets all current pins from the channel where the message is to be posted
+        # check if the weekly URL is inconsistent (not ending with "challenge-[num]")
+        weeklyUrl = getMostRecentChallenge(True) # get weekly URL
+        broken = False
+        try:
+            result = int(weeklyUrl.split("-")[-1]) # if it ends with an integer
+        except Exception:
+            broken = True # otherwise, URL is inconsistent and must be tracked
+
+        # if weekly URL is inconsistent, add to tracked list in external file
+        if broken:
+            with open(FILENAME, "a+") as file:
+                # format for each line is "[num] url"
+                line = str(getMostRecentChallenge(False)) + " " + BASE_URL + str(getMostRecentChallenge(True)) + "\n"
+                file.write(line)
+
+        currentPins = await targetChannel.pins() #Gets all current pins from the channel where the message is to be posted
         for i in currentPins: #Loops through all currently pinned messages
             if i.content.startswith(WEEKLY_TEXT) and i.author == client.user: #If the message is the last weekly problem post
-                await client.unpin_message(i) #Unpin the message
+                await i.unpin() #Unpin the message
 
-        toPin = await client.send_message(targetChannel, msg) #Sends the message to the target channel, and assigns that message to the variable toPin
-        await client.pin_message(toPin) #Pins the message
+        toPin = await targetChannel.send(msg) #Sends the message to the target channel, and assigns that message to the variable toPin
+        await toPin.pin() #Pins the message
 
 @client.event
 async def on_ready():
@@ -170,5 +266,6 @@ async def on_ready():
     print(client.user.name)
     print(client.user.id)
     print('------')
+    await client.change_presence(activity=discord.Activity(name='%help', type=discord.ActivityType.watching))
 
 client.run(TOKEN)
