@@ -210,7 +210,11 @@ async def on_message(message):
     # sends message with current weekly challenge
     if message.content.startswith("%weekly"):
         msg = question(True)
-        await message.channel.send(msg)
+        pointer = 0
+        for i in range(math.ceil(len(msg) / 2000)): # discord character limit
+            content = msg[pointer:pointer+2000]
+            await message.channel.send(content)
+            pointer += 2000
 
     # returns either a random question (from a category if specified) or one with a specific challenge number
     if message.content.startswith("%question"):
@@ -224,7 +228,11 @@ async def on_message(message):
         else:
             msg = question(False) # get a random challenge
 
-        await message.channel.send(msg)
+        pointer = 0
+        for i in range(math.ceil(len(msg) / 2000)): # discord character limit
+            content = msg[pointer:pointer+2000]
+            await message.channel.send(content)
+            pointer += 2000
         
 
     #The bot posts a message when the weekly challenge updates; this relies on a webhook connected to their Twitter account. (which only tweets when the challenge updates)
