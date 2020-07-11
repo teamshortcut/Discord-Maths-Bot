@@ -262,11 +262,15 @@ async def on_message(message):
 
         currentPins = await targetChannel.pins() #Gets all current pins from the channel where the message is to be posted
         for i in currentPins: #Loops through all currently pinned messages
-            if i.content.startswith(WEEKLY_TEXT) and i.author == client.user: #If the message is the last weekly problem post
+            if not i.content.startswith(HELP) and i.author == client.user: #If the message is the last weekly problem post
                 await i.unpin() #Unpin the message
 
-        toPin = await targetChannel.send(msg) #Sends the message to the target channel, and assigns that message to the variable toPin
-        await toPin.pin() #Pins the message
+        pointer = 0
+        for i in range(math.ceil(len(msg) / 2000)): # discord character limit
+            content = msg[pointer:pointer+2000]
+            pointer += 2000
+            toPin = await targetChannel.send(content) #Sends the message to the target channel, and assigns that message to the variable toPin
+            await toPin.pin() #Pins the message
 
 @client.event
 async def on_ready():
