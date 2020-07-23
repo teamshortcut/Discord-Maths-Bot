@@ -5,7 +5,7 @@ sudo apt-get install python3.7
 wget https://bootstrap.pypa.io/get-pip.py
 sudo python3.6 get-pip.py
 sudo pip install requests
-sudo pip install discord
+sudo pip install discord.py
 wget https://raw.githubusercontent.com/teamshortcut/Discord-Maths-Bot/master/maths-bot.py
 wget https://raw.githubusercontent.com/teamshortcut/Discord-Maths-Bot/master/challenge.txt
 sed -i 's/TOKEN[[:space:]]=[[:space:]]\"XXX\"/TOKEN = \"YOURTOKEN\"/g' maths-bot.py
